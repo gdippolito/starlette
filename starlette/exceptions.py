@@ -2,18 +2,24 @@ import asyncio
 import http
 import typing
 
+from starlette.background import BackgroundTask
 from starlette.concurrency import run_in_threadpool
 from starlette.requests import Request
 from starlette.responses import PlainTextResponse, Response
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
-
 class HTTPException(Exception):
-    def __init__(self, status_code: int, detail: str = None) -> None:
+    def __init__(
+        self, 
+        status_code: int, 
+        detail: str = None, 
+        background: BackgroundTask = None
+    ) -> None:
         if detail is None:
             detail = http.HTTPStatus(status_code).phrase
         self.status_code = status_code
         self.detail = detail
+        self.background = background
 
     def __repr__(self) -> str:
         class_name = self.__class__.__name__
@@ -85,9 +91,9 @@ class ExceptionMiddleware:
                 response = await handler(request, exc)
             else:
                 response = await run_in_threadpool(handler, request, exc)
-            await response(scope, receive, sender)
+            await response(scope, receive, sender)       
 
     def http_exception(self, request: Request, exc: HTTPException) -> Response:
         if exc.status_code in {204, 304}:
             return Response(b"", status_code=exc.status_code)
-        return PlainTextResponse(exc.detail, status_code=exc.status_code)
+        return PlainTextResponse(exc.detail, background=exc.background ,status_code=exc.status_code)
